@@ -506,6 +506,30 @@ class TestEachFailureIsNamedOnce:
         assert captured.out.count("!! WOULD STOP --execute:") == 2, captured.out
         assert "release notes for v0.1.0" not in captured.out
 
+    def test_a_section_dated_tomorrow_still_prints_the_notes(self, checkout, capsys):
+        """Only a missing section leaves the notes with nothing to read.
+
+        Gating the notes on the whole changelog check silenced them whenever
+        the section existed but was undated or dated for another day, and that
+        is the dry run made the day before the cut. The notes are the thing the
+        rehearsal exists to have read, so they still print here -- and the wrong
+        date is still named once, by the changelog check.
+        """
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        (checkout / "CHANGELOG.md").write_text(changelog(tomorrow))
+        _git(checkout, "commit", "-qam", f"release: {VERSION}")
+        _git(checkout, "push", "-q", "origin", "dev:refs/heads/dev")
+        gh_answers(green(_git(checkout, "rev-parse", "HEAD").strip()))
+
+        code, planned = rehearse(checkout)
+        captured = capsys.readouterr()
+        assert code == 1 and planned == []
+        assert f"is dated {tomorrow}, today is {TODAY}" in captured.err
+        assert captured.err.count("FAIL at ") == 1, captured.err
+        assert captured.out.count("!! WOULD STOP --execute:") == 1, captured.out
+        assert "release notes for v0.1.0" in captured.out
+        assert "- The first release." in captured.out
+
 
 class TestExecute:
     """`--execute` here pushes to the fixture's own bare repository in
